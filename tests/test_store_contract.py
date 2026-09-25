@@ -1,16 +1,32 @@
+import os
 from pathlib import Path
 
 import pytest
 
+from grimoire.config import Config
 from grimoire.errors import GrimoireError
+from grimoire.store import open_stores
 from grimoire.store.base import find
-from grimoire.store.files import FileHandoffs, FileReminders
+
+DSN_ENV = {"postgres": "AI_GRIMOIRE_TEST_PG_DSN", "mysql": "AI_GRIMOIRE_TEST_MYSQL_DSN"}
 
 
-@pytest.fixture(params=["files"])
+@pytest.fixture(params=["files", "sqlite", "postgres", "mysql"])
 def stores(request, tmp_path):
-    yield (FileHandoffs(tmp_path / "files" / "handoffs", tmp_path / "files" / "handoffs.md"),
-           FileReminders(tmp_path / "files" / "reminders.md"))
+    kind = request.param
+    if kind in DSN_ENV and not os.environ.get(DSN_ENV[kind]):
+        pytest.skip(f"set {DSN_ENV[kind]} to run the {kind} contract tests")
+    cfg = Config(backend=kind, files_dir=tmp_path / "files", sqlite_path=tmp_path / "g.db",
+                 dsn_env=DSN_ENV.get(kind, "UNUSED"))
+    hs, rs = open_stores(cfg, scratch=tmp_path / "scratch")
+    if kind in DSN_ENV:
+        for table in ("grimoire_handoffs", "grimoire_reminders"):
+            hs._exec(f"DELETE FROM {table}")
+        hs.db().commit()
+    yield hs, rs
+    close = getattr(hs, "close", None)
+    if close:
+        close()
 
 
 def write_and_record(hs, date_, workspace, source, summary, body):
