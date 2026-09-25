@@ -2,12 +2,12 @@
 PowerShell skills produced, so an Obsidian vault carries over unchanged."""
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from urllib.parse import unquote, urlparse
-from urllib.request import url2pathname
+from urllib.parse import unquote
 
 from ..errors import GrimoireError
 from ..fsutil import read_lines, slug, write_lines
@@ -42,19 +42,51 @@ REMINDER_HEAD = [
 ]
 
 
+_LINE_BREAK = re.compile("\r\n|[\r\n\u2028\u2029\x85\x0b\x0c\x1c-\x1e]")
+
+
 def cell(text: str) -> str:
-    """A table cell can't contain a bare pipe, and a newline would end the row."""
-    return re.sub(r"\r?\n", " ", text or "").replace("|", r"\|").strip()
+    """A table cell can't contain a bare pipe, and a line break would end the row."""
+    return _LINE_BREAK.sub(" ", text or "").replace("|", r"\|").strip()
 
 
 def split_cells(line: str) -> list[str]:
     return CELL_SPLIT.split(line.strip().strip("|"))
 
 
+_WIN_DRIVE = re.compile(r"^/([A-Za-z]):(/.*)?$")
+
+
 def uri_to_path(uri: str) -> str:
-    if uri.startswith("file:"):
-        return url2pathname(urlparse(uri).path)
-    return unquote(uri)
+    """Like urlparse+url2pathname, but tolerant of PS-written `file:` links.
+
+    The old PowerShell writer used [uri]::EscapeUriString, which escapes spaces
+    and non-ASCII but leaves `#`, `?`, `(`, `)` unescaped. urlparse treats a bare
+    `#`/`?` as the start of a fragment/query and truncates the path, so we parse
+    `file:` URIs by hand instead of going through urlparse.
+    """
+    if not uri.startswith("file:"):
+        return unquote(uri)
+    rest = uri[len("file:"):]
+    if rest.startswith("//"):
+        rest = rest[2:]
+        if rest and rest[0] != "/":
+            # An authority component is present: "localhost" or (rarely) a host.
+            slash = rest.find("/")
+            host, tail = (rest, "") if slash < 0 else (rest[:slash], rest[slash:])
+            if host.lower() not in ("", "localhost"):
+                decoded = unquote(tail).replace("/", "\\")
+                return f"\\\\{host}{decoded}"
+            rest = tail
+    if not rest.startswith("/"):
+        rest = "/" + rest
+    decoded = unquote(rest)
+    m = _WIN_DRIVE.match(decoded)
+    if m:
+        drive, tail = m.group(1), m.group(2) or ""
+        native = f"{drive}:{tail}"
+        return native.replace("/", "\\") if os.name == "nt" else native
+    return decoded.replace("/", "\\") if os.name == "nt" else decoded
 
 
 def _inside(path: str, root: Path) -> bool:
@@ -111,7 +143,7 @@ class FileHandoffs:
             if len(cells) < 4 or not DATE_RE.fullmatch(cells[0].strip()):
                 continue
             label, link = cells[1].strip(), cells[2].strip()
-            m = re.search(r"\]\(([^)]+)\)", link)
+            m = re.search(r"\]\((.+)\)\s*$", link)
             if m:
                 file = uri_to_path(m.group(1))
             else:

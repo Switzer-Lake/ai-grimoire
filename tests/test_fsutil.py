@@ -28,3 +28,17 @@ def test_write_atomic_creates_parents_and_leaves_no_temp(tmp_path):
     write_atomic(p, "héllo — ok\n")
     assert p.read_text(encoding="utf-8") == "héllo — ok\n"
     assert [x.name for x in p.parent.iterdir()] == ["c.txt"]
+
+
+def test_read_lines_keeps_unicode_line_separator_inside_line(tmp_path):
+    p = tmp_path / "u.md"
+    p.write_bytes("a b\r\nc\r\n".encode("utf-8"))
+    lines, nl = read_lines(p)
+    assert lines == ["a b", "c"]
+    assert nl == "\r\n"
+
+
+def test_read_lines_drops_only_trailing_empty_element(tmp_path):
+    p = tmp_path / "v.md"
+    p.write_bytes(b"one\n\ntwo\n")
+    assert read_lines(p) == (["one", "", "two"], "\n")

@@ -12,12 +12,23 @@ def slug(text: str) -> str:
     return s or "workspace"
 
 
+_LINE_SPLIT = re.compile(r"\r\n|\r|\n")
+
+
 def read_lines(path: Path) -> tuple[list[str], str]:
-    """Lines without terminators, plus the file's newline style. Drops a UTF-8 BOM."""
+    """Lines without terminators, plus the file's newline style. Drops a UTF-8 BOM.
+
+    Splits only on CR/LF (like PowerShell's Get-Content), not on the other
+    line-break characters str.splitlines() treats specially (U+2028, U+2029,
+    \\x85, \\x0b, \\x0c, \\x1c-\\x1e), so those stay inside a logical line.
+    """
     with open(path, encoding="utf-8-sig", newline="") as f:
         raw = f.read()
     newline = "\r\n" if "\r\n" in raw else "\n"
-    return raw.splitlines(), newline
+    lines = _LINE_SPLIT.split(raw)
+    if lines and lines[-1] == "":
+        lines.pop()
+    return lines, newline
 
 
 def write_lines(path: Path, lines: list[str], newline: str = "\n") -> None:

@@ -1,7 +1,15 @@
+import os
 from pathlib import Path
 
 from grimoire.store.base import find
-from grimoire.store.files import FileHandoffs, FileReminders
+from grimoire.store.files import FileHandoffs, FileReminders, uri_to_path
+
+
+def _base_uri(tmp_path: Path) -> str:
+    posix = tmp_path.resolve().as_posix()
+    if not posix.startswith("/"):
+        posix = "/" + posix
+    return f"file://{posix}"
 
 HANDOFFS = (
     "# Handoffs\n"
@@ -139,3 +147,72 @@ def test_unparseable_due_is_kept(tmp_path):
     f.write_text("| ID | Due | Reminder | Context | Set from | Set on |\n|---|---|---|---|---|---|\n"
                  "| R1 | next tues | fix me | | ws | 2026-09-25 |\n", encoding="utf-8")
     assert FileReminders(f).all()[0].due == "next tues"
+
+
+def test_reads_ps_link_with_hash_directory(tmp_path):
+    d = tmp_path / "C#"
+    d.mkdir()
+    target = d / "x.md"
+    target.write_text("doc", encoding="utf-8")
+    uri = f"{_base_uri(tmp_path)}/C#/x.md"
+    idx = tmp_path / "handoffs.md"
+    idx.write_text(
+        "| Date | Workspace | Handoff | Summary |\n|---|---|---|---|\n"
+        f"| 2026-09-25 | ws | [x.md]({uri}) | s |\n",
+        encoding="utf-8")
+    rows = FileHandoffs(tmp_path / "handoffs", idx).rows()
+    assert rows[0].path == str(target.resolve())
+    assert rows[0].exists is True
+
+
+def test_reads_ps_link_with_space_and_parens_directory(tmp_path):
+    d = tmp_path / "a b (x)"
+    d.mkdir()
+    target = d / "x.md"
+    target.write_text("doc", encoding="utf-8")
+    uri = f"{_base_uri(tmp_path)}/a%20b%20(x)/x.md"
+    idx = tmp_path / "handoffs.md"
+    idx.write_text(
+        "| Date | Workspace | Handoff | Summary |\n|---|---|---|---|\n"
+        f"| 2026-09-25 | ws | [x.md]({uri}) | s |\n",
+        encoding="utf-8")
+    rows = FileHandoffs(tmp_path / "handoffs", idx).rows()
+    assert rows[0].path == str(target.resolve())
+    assert rows[0].exists is True
+
+
+def test_uri_to_path_literal_hash_and_question():
+    if os.name == "nt":
+        assert uri_to_path("file:///C:/Work/C#/dir?/a%20b.md") == "C:\\Work\\C#\\dir?\\a b.md"
+    else:
+        assert uri_to_path("file:///work/C#/dir?/a%20b.md") == "/work/C#/dir?/a b.md"
+
+
+def test_uri_to_path_round_trips_special_chars(tmp_path):
+    d = tmp_path / "a b (x) \u00e9 #1"
+    d.mkdir()
+    p = d / "f.md"
+    p.write_text("doc", encoding="utf-8")
+    assert uri_to_path(p.resolve().as_uri()) == str(p.resolve())
+
+
+def test_reminder_with_unicode_line_separator_reads_as_one_row(tmp_path):
+    f = tmp_path / "reminders.md"
+    rs = FileReminders(f)
+    rs.add("a\u2028b", "2026-09-26", "", "ws", "2026-09-25")
+    text = f.read_text(encoding="utf-8")
+    assert "a b" in text
+    assert "\u2028" not in text
+    rows = FileReminders(f).all()
+    assert len(rows) == 1
+    assert rows[0].text == "a b"
+
+
+def test_handoff_summary_with_unicode_line_separator_reads_as_one_row(tmp_path):
+    hs = FileHandoffs(tmp_path / "handoffs", tmp_path / "handoffs.md")
+    p = hs.new_target("2026-09-25", "ws")
+    Path(p).write_text("doc", encoding="utf-8")
+    hs.record(p, "ws", "wmux", "x\u2028y")
+    rows = hs.rows()
+    assert len(rows) == 1
+    assert rows[0].summary == "x y"
