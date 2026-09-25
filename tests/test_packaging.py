@@ -27,6 +27,7 @@ def test_hook_calls_run_py():
     assert entry["matcher"] == "startup|clear"
     cmd = entry["hooks"][0]["command"]
     assert '"${CLAUDE_PLUGIN_ROOT}/lib/run.py" remind hook' in cmd
+    assert cmd.endswith("|| exit 0")
 
 
 def run_py(plugin, *args, env_extra=None, tmp_path=None):
