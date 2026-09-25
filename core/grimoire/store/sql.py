@@ -142,12 +142,13 @@ class SqlStore:
 
     def consume(self, workspace: str) -> list[str]:
         target = base_label(workspace)
-        cur = self._exec("DELETE FROM grimoire_handoffs WHERE LOWER(workspace) = LOWER(?)", (target,))
-        n = cur.rowcount
-        self.db().commit()
-        if not n:
+        ids = [r.key for r in self.rows() if r.workspace.casefold() == target.casefold()]
+        if not ids:
             return [f"no rows for '{workspace}' in {self.label} - nothing to consume"]
-        return [f"removed {n} row(s) for '{target}' from {self.label}"]
+        for i in ids:
+            self._exec("DELETE FROM grimoire_handoffs WHERE id = ?", (i,))
+        self.db().commit()
+        return [f"removed {len(ids)} row(s) for '{target}' from {self.label}"]
 
     # -- reminders ----------------------------------------------------------
     def all(self) -> list[Reminder]:

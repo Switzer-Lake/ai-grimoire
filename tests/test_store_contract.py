@@ -61,6 +61,15 @@ def test_record_find_open_consume(stores):
     assert find(hs, "other")[0].summary == "not mine"
 
 
+def test_consume_is_case_and_accent_fold_consistent_with_find(stores):
+    hs, _ = stores
+    write_and_record(hs, "2026-09-25", "Über", "wmux", "accented", "x")
+    write_and_record(hs, "2026-09-25", "uber", "wmux", "decoy", "y")
+    msgs = hs.consume("über")
+    assert any("removed 1 row(s)" in m for m in msgs)
+    assert find(hs, "uber")[0].summary == "decoy"
+
+
 def test_same_day_twice_newest_first(stores):
     hs, _ = stores
     write_and_record(hs, "2026-09-25", "ws", "wmux", "morning", "a")
