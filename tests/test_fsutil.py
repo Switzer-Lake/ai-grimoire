@@ -32,9 +32,9 @@ def test_write_atomic_creates_parents_and_leaves_no_temp(tmp_path):
 
 def test_read_lines_keeps_unicode_line_separator_inside_line(tmp_path):
     p = tmp_path / "u.md"
-    p.write_bytes("a b\r\nc\r\n".encode("utf-8"))
+    p.write_bytes("a\u2028b\r\nc\r\n".encode("utf-8"))
     lines, nl = read_lines(p)
-    assert lines == ["a b", "c"]
+    assert lines == ["a\u2028b", "c"]
     assert nl == "\r\n"
 
 
