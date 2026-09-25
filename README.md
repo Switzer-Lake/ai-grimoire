@@ -24,6 +24,9 @@ Requires Python 3.11+ on PATH (`python3`, `python`, or `py -3`).
 Then optionally run `/shift:setup` to pick a storage backend. Without it,
 everything is stored under `~/grimoire`.
 
+To test an install end to end (including a branch before it's merged), follow
+[docs/testing.md](docs/testing.md).
+
 ## Workspace names
 
 A handoff is filed under the name of the workspace it came from, so several
