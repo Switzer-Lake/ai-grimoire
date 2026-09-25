@@ -61,10 +61,6 @@ def connect(backend: str, sqlite_path=None, dsn: str | None = None, timeout: int
         except Exception as e:
             raise GrimoireError(f"cannot connect to postgres: {_scrub(str(e), dsn, pw, raw_pw)}") from None
     if backend == "mysql":
-        try:
-            import pymysql
-        except ImportError:
-            raise GrimoireError("PyMySQL is not installed - run: python -m pip install --user PyMySQL") from None
         u = urlparse(dsn or "")
         if u.scheme not in ("mysql", "mysql+pymysql"):
             raise GrimoireError("mysql connection string must look like mysql://user:pass@host:3306/dbname")
@@ -78,6 +74,10 @@ def connect(backend: str, sqlite_path=None, dsn: str | None = None, timeout: int
                 "mysql connection string is malformed - percent-encode special characters in the "
                 "password (e.g. / as %2F)"
             ) from None
+        try:
+            import pymysql
+        except ImportError:
+            raise GrimoireError("PyMySQL is not installed - run: python -m pip install --user PyMySQL") from None
         try:
             return pymysql.connect(host=host, port=port, user=user, password=password,
                                    database=database, connect_timeout=timeout, charset="utf8mb4")
