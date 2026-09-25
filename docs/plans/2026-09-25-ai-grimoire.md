@@ -3412,7 +3412,6 @@ Then, in a new session in a scratch folder:
 6. Clear R1, `/shift:name --clear`.
 
 Expected: each step behaves as described. Record anything off as an issue in the repo before the switch-over.
-````
 
 - [ ] **Step 7: Leave the switch-over to the user**
 
