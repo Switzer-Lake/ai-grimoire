@@ -52,6 +52,7 @@ separate, manual step after it works.
 ```
 ai-grimoire/
   .claude-plugin/marketplace.json      # lists shift + remind
+  core/run.py                          # launcher: Python version check, then grimoire.cli.main
   core/grimoire/                       # the only hand-edited copy of shared code
     __init__.py
     cli.py                             # entry point: `handoff ...`, `remind ...`, `name ...`, `config ...`
@@ -64,16 +65,14 @@ ai-grimoire/
   plugins/
     shift/
       .claude-plugin/plugin.json
-      bin/grimoire                     # launcher (sh) + grimoire.cmd (Windows)
-      lib/grimoire/                    # generated copy of core/grimoire
+      lib/run.py, lib/grimoire/        # generated copy of core/run.py + core/grimoire
       skills/end/SKILL.md              # /shift:end
       skills/start/SKILL.md            # /shift:start
       skills/name/SKILL.md             # /shift:name
       skills/setup/SKILL.md            # /shift:setup
     remind/
       .claude-plugin/plugin.json
-      bin/grimoire, bin/grimoire.cmd
-      lib/grimoire/                    # generated copy of core/grimoire
+      lib/run.py, lib/grimoire/        # generated copy of core/run.py + core/grimoire
       skills/remind/SKILL.md
       hooks/hooks.json                 # SessionStart (startup|clear) -> remind hook
   scripts/build.py                     # copy core/ into each plugin's lib/; --check fails on drift
@@ -88,11 +87,16 @@ differs from `core/`.
 
 ### Launcher
 
-Skills and the hook call `${CLAUDE_PLUGIN_ROOT}/bin/grimoire <args>`. The
-launcher finds a Python 3.11+ interpreter — `python3`, then `python`, then
-`py -3` on Windows — and runs `lib/grimoire/cli.py`. If none is found it prints
-one line naming the requirement and exits non-zero (the hook exits 0 silently
-instead; see Hook).
+Skills and the hook run `python3 "${CLAUDE_PLUGIN_ROOT}/lib/run.py" <args>`
+(Claude Code substitutes `${CLAUDE_PLUGIN_ROOT}` in skill text and hook
+commands). Skills tell the agent to retry with `python`, then `py -3`, when
+`python3` is not found; the hook command chains `python3 ... || python ...`.
+`run.py` checks for Python 3.11+ and prints one line naming the requirement if
+it is older (the hook variant exits 0 silently instead; see Hook).
+
+There is no `bin/` directory: plugin `bin/` folders are put on PATH, so two
+plugins shipping the same `grimoire` command would collide, and claude.ai /
+Cowork refuse plugins that contain one.
 
 ## Workspace identity
 
@@ -216,13 +220,13 @@ selected. A missing driver fails with the exact install command.
 
 Behavior is ported from the current skills; only the mechanics change.
 
-- **`/shift:end [focus]`** — `grimoire handoff resolve` → write the handoff to
+- **`/shift:end [focus]`** — `grimoire handoff new` → write the handoff to
   the returned target following the `handoff`-style content guidance (inlined
   into this skill, since a public install can't assume a separate `handoff`
   skill) → `grimoire handoff record ...` with a one-line summary → report path
   and row in two lines.
 - **`/shift:start [workspace]`** — `grimoire remind due` (skip if the hook
-  already raised them) → `grimoire handoff resolve` → read → verify claims
+  already raised them) → `grimoire handoff find` → read → verify claims
   against live state (git, GitHub via `gh` when available, time-sensitive
   claims) → report drift and next steps → `grimoire handoff consume` only after
   the document is in the session, and not when the user is only browsing.
@@ -240,7 +244,7 @@ are removed; the skills stay generic.
 ## Hook
 
 `plugins/remind/hooks/hooks.json` registers SessionStart with matcher
-`startup|clear`, running `bin/grimoire remind hook`. It prints the
+`startup|clear`, running `lib/run.py remind hook`. It prints the
 `hookSpecificOutput` JSON only when something is due, and **never fails a
 session**: a missing Python, a missing config, an unreachable database or a
 broken file all print nothing and exit 0. For SQL backends it uses a 3 s
