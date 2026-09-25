@@ -33,7 +33,8 @@ replacing it.
   and never write it into any file. Tell the user to set it in their shell
   profile before starting Claude Code, e.g.
   `export AI_GRIMOIRE_DSN='postgresql://user:pass@host:5432/db'` or
-  `mysql://user:pass@host:3306/db`.
+  `mysql://user:pass@host:3306/db`. Percent-encode special characters in the
+  password (e.g. `/` as `%2F`).
 
 ## Step 3 - install the driver (postgres / mysql only)
 

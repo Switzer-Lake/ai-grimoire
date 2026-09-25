@@ -66,7 +66,8 @@ order = ["arg", "pinned", "wmux", "cmux", "tmux", "zellij", "git", "cwd"]
 
 Connection strings are only ever read from the environment variable named by
 `dsn_env`, never stored in the file. Postgres needs `psycopg[binary]`, MySQL
-needs `PyMySQL` (`/shift:setup` installs them).
+needs `PyMySQL` (`/shift:setup` installs them). Percent-encode special
+characters in the password (e.g. `/` as `%2F`).
 
 ## Development
 

@@ -3,12 +3,12 @@ database, not as a path: a path only exists on the machine that wrote it."""
 from __future__ import annotations
 
 import socket
-import tempfile
 from datetime import date
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import unquote, urlparse
 
+from .. import config
 from ..errors import GrimoireError
 from ..fsutil import slug, write_atomic
 from .base import HandoffRow, Reminder, base_label, date_from_name, label_for
@@ -33,6 +33,16 @@ def ddl(backend: str) -> list[str]:
     ]
 
 
+def _scrub(text: str, dsn: str | None, *passwords: str | None) -> str:
+    """Mask a DSN and its password fragment(s) out of driver error text."""
+    for pw in passwords:
+        if pw:
+            text = text.replace(pw, "***")
+    if dsn:
+        text = text.replace(dsn, "***")
+    return text
+
+
 def connect(backend: str, sqlite_path=None, dsn: str | None = None, timeout: int = 3):
     if backend == "sqlite":
         import sqlite3
@@ -43,10 +53,13 @@ def connect(backend: str, sqlite_path=None, dsn: str | None = None, timeout: int
             import psycopg
         except ImportError:
             raise GrimoireError('psycopg is not installed - run: python -m pip install --user "psycopg[binary]"') from None
+        u = urlparse(dsn or "")
+        raw_pw = u.password or ""
+        pw = unquote(raw_pw)
         try:
             return psycopg.connect(dsn, connect_timeout=timeout)
         except Exception as e:
-            raise GrimoireError(f"cannot connect to postgres: {e}") from None
+            raise GrimoireError(f"cannot connect to postgres: {_scrub(str(e), dsn, pw, raw_pw)}") from None
     if backend == "mysql":
         try:
             import pymysql
@@ -56,11 +69,20 @@ def connect(backend: str, sqlite_path=None, dsn: str | None = None, timeout: int
         if u.scheme not in ("mysql", "mysql+pymysql"):
             raise GrimoireError("mysql connection string must look like mysql://user:pass@host:3306/dbname")
         try:
-            return pymysql.connect(host=u.hostname or "localhost", port=u.port or 3306,
-                                   user=unquote(u.username or ""), password=unquote(u.password or ""),
-                                   database=u.path.lstrip("/"), connect_timeout=timeout, charset="utf8mb4")
+            host, port, user = u.hostname or "localhost", u.port or 3306, unquote(u.username or "")
+            raw_pw = u.password or ""
+            password = unquote(raw_pw)
+            database = u.path.lstrip("/")
+        except ValueError:
+            raise GrimoireError(
+                "mysql connection string is malformed - percent-encode special characters in the "
+                "password (e.g. / as %2F)"
+            ) from None
+        try:
+            return pymysql.connect(host=host, port=port, user=user, password=password,
+                                   database=database, connect_timeout=timeout, charset="utf8mb4")
         except Exception as e:
-            raise GrimoireError(f"cannot connect to mysql: {e}") from None
+            raise GrimoireError(f"cannot connect to mysql: {_scrub(str(e), dsn, password, raw_pw)}") from None
     raise GrimoireError(f"not a SQL backend: {backend}")
 
 
@@ -70,8 +92,11 @@ class SqlStore:
         self._connect = connect_fn
         self._db = None
         self.label = label
-        self.scratch = Path(scratch) if scratch else Path(tempfile.gettempdir()) / "ai-grimoire"
+        self.scratch = Path(scratch) if scratch else config.state_dir() / "scratch"
         self._p = "?" if backend == "sqlite" else "%s"
+        self.scratch.mkdir(parents=True, exist_ok=True, mode=0o700)
+        (self.scratch / "pending").mkdir(parents=True, exist_ok=True, mode=0o700)
+        (self.scratch / "reading").mkdir(parents=True, exist_ok=True, mode=0o700)
 
     # -- plumbing -----------------------------------------------------------
     def describe(self) -> str:
@@ -148,6 +173,9 @@ class SqlStore:
         for i in ids:
             self._exec("DELETE FROM grimoire_handoffs WHERE id = ?", (i,))
         self.db().commit()
+        for i in ids:
+            for p in (self.scratch / "reading").glob(f"*-{i}.md"):
+                p.unlink(missing_ok=True)
         return [f"removed {len(ids)} row(s) for '{target}' from {self.label}"]
 
     # -- reminders ----------------------------------------------------------
