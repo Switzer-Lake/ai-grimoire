@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "End-of-session handoffs filed under the workspace's name (wmux, cmux, tmux, zellij, or a pinned tag), picked up and verified next session. Stores in markdown files, SQLite, Postgres or MySQL.",
   "license": "MIT",
+  "author": { "name": "Switzer Lake" },
   "repository": "https://github.com/Switzer-Lake/ai-grimoire",
   "keywords": ["handoff", "end-of-day", "start-of-day", "workspace"]
 }

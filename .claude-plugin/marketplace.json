@@ -1,6 +1,7 @@
 {
   "name": "ai-grimoire",
   "owner": { "name": "Switzer Lake" },
+  "description": "Claude Code plugins for carrying work across sessions: shift (handoffs) and remind (dated reminders).",
   "plugins": [
     {
       "name": "shift",
