@@ -143,7 +143,7 @@ class FileHandoffs:
             if len(cells) < 4 or not DATE_RE.fullmatch(cells[0].strip()):
                 continue
             label, link = cells[1].strip(), cells[2].strip()
-            m = re.search(r"\]\((.+)\)\s*$", link)
+            m = re.search(r"\]\(((?:[^()]|\([^()]*\))+)\)", link)
             if m:
                 file = uri_to_path(m.group(1))
             else:
@@ -177,8 +177,11 @@ class FileHandoffs:
             elif not _inside(r.path, self.dir):
                 msgs.append(f"left in place (outside {self.dir}) {r.path}")
             else:
-                Path(r.path).unlink()
-                msgs.append(f"deleted {r.path}")
+                try:
+                    Path(r.path).unlink()
+                    msgs.append(f"deleted {r.path}")
+                except OSError as e:
+                    msgs.append(f"could not delete {r.path}: {e}")
         msgs.append(f"removed {len(mine)} row(s) for '{target}' from {self.index}")
         return msgs
 
@@ -206,6 +209,7 @@ class FileReminders:
         lines, nl = read_lines(self.path)
         sep = next((i for i, line in enumerate(lines) if SEP.match(line)), -1)
         state = _State(pre=[], newline=nl)
+        pending_no_id: list[list[str]] = []
         if sep < 1:
             # The table is gone. Keep what they wrote and re-add the table below it.
             state.pre = lines + [""]
@@ -218,6 +222,10 @@ class FileReminders:
                 if len(cells) >= 3 and re.fullmatch(r"[Rr]?\d+", cells[0]):
                     cells += [""] * (6 - len(cells))
                     state.rows.append(Reminder(int(cells[0].lstrip("Rr")), cells[1], cells[2], cells[3], cells[4], cells[5]))
+                elif len(cells) >= 3 and cells[2]:
+                    # Hand-added row with no ID (or a non-R first cell): keep it, assign an ID below.
+                    cells += [""] * (6 - len(cells))
+                    pending_no_id.append(cells)
                 end += 1
             state.post = lines[end:]
         from_comment = 1
@@ -225,7 +233,11 @@ class FileReminders:
             m = NEXT_ID.search(line)
             if m:
                 from_comment = int(m.group(1))
-        state.next_id = max(from_comment, max((r.num for r in state.rows), default=0) + 1)
+        next_id = max(from_comment, max((r.num for r in state.rows), default=0) + 1)
+        for cells in pending_no_id:
+            state.rows.append(Reminder(next_id, cells[1], cells[2], cells[3], cells[4], cells[5]))
+            next_id += 1
+        state.next_id = next_id
         return state
 
     def _write(self, state: _State) -> None:

@@ -99,6 +99,24 @@ def test_consume_leaves_documents_outside_handoff_dir(tmp_path):
     assert "hand-edited" not in idx.read_text(encoding="utf-8")
 
 
+def test_consume_reports_unlink_failure_instead_of_raising(tmp_path, monkeypatch):
+    hs = FileHandoffs(tmp_path / "handoffs", tmp_path / "handoffs.md")
+    p = hs.new_target("2026-09-25", "ws")
+    Path(p).write_text("doc", encoding="utf-8")
+    hs.record(p, "ws", "wmux", "s")
+
+    real_unlink = Path.unlink
+
+    def fake_unlink(self, *a, **k):
+        if self.name == Path(p).name:
+            raise OSError("boom")
+        return real_unlink(self, *a, **k)
+
+    monkeypatch.setattr(Path, "unlink", fake_unlink)
+    msgs = hs.consume("ws")
+    assert any("could not delete" in m and "boom" in m for m in msgs)
+
+
 def test_consume_deletes_documents_inside_handoff_dir(tmp_path):
     hs = FileHandoffs(tmp_path / "handoffs", tmp_path / "handoffs.md")
     p = hs.new_target("2026-09-25", "ws")
@@ -142,11 +160,77 @@ def test_reminders_reshaped_file_keeps_text(tmp_path):
     assert [r.text for r in FileReminders(f).all()] == ["x"]
 
 
+def test_hand_added_row_without_id_gets_one_and_survives(tmp_path):
+    f = tmp_path / "reminders.md"
+    f.write_text(
+        "# Reminders\n\n<!-- next-id: 5 -->\n\n"
+        "| ID | Due | Reminder | Context | Set from | Set on |\n|---|---|---|---|---|---|\n"
+        "| R3 | 2026-09-30 | existing | ctx | ws | 2026-09-20 |\n"
+        "|  | 2026-09-02 | hand added | ctx | ws | 2026-09-01 |\n",
+        encoding="utf-8")
+    rs = FileReminders(f)
+    before = rs.all()
+    assert [(r.num, r.text) for r in before] == [(5, "hand added"), (3, "existing")]
+    rs.add("unrelated", "2026-10-01", "", "ws", "2026-09-25")
+    after = rs.all()
+    assert ("hand added" in [r.text for r in after])
+    hand = next(r for r in after if r.text == "hand added")
+    assert hand.num == 5
+    assert "| R5 |" in f.read_text(encoding="utf-8")
+
+
+def test_hand_added_row_with_empty_text_is_ignored(tmp_path):
+    f = tmp_path / "reminders.md"
+    f.write_text(
+        "| ID | Due | Reminder | Context | Set from | Set on |\n|---|---|---|---|---|---|\n"
+        "|  | 2026-09-02 |  | ctx | ws | 2026-09-01 |\n",
+        encoding="utf-8")
+    assert FileReminders(f).all() == []
+
+
 def test_unparseable_due_is_kept(tmp_path):
     f = tmp_path / "reminders.md"
     f.write_text("| ID | Due | Reminder | Context | Set from | Set on |\n|---|---|---|---|---|---|\n"
                  "| R1 | next tues | fix me | | ws | 2026-09-25 |\n", encoding="utf-8")
     assert FileReminders(f).all()[0].due == "next tues"
+
+
+def test_reads_link_with_trailing_hand_edited_text(tmp_path):
+    d = tmp_path / "handoffs"
+    d.mkdir()
+    target = d / "2026-09-24-x.md"
+    target.write_text("doc", encoding="utf-8")
+    idx = tmp_path / "handoffs.md"
+    idx.write_text(
+        "| Date | Workspace | Handoff | Summary |\n|---|---|---|---|\n"
+        f"| 2026-09-24 | ws | [x.md]({target.resolve().as_uri()}) (moved) | s |\n",
+        encoding="utf-8")
+    rows = FileHandoffs(d, idx).rows()
+    assert rows[0].path == str(target.resolve())
+    assert rows[0].exists is True
+
+
+def test_reads_link_with_two_links_uses_first(tmp_path):
+    d = tmp_path / "handoffs"
+    d.mkdir()
+    target = d / "2026-09-24-x.md"
+    target.write_text("doc", encoding="utf-8")
+    other = d / "2026-09-24-y.md"
+    other.write_text("doc2", encoding="utf-8")
+    idx = tmp_path / "handoffs.md"
+    idx.write_text(
+        "| Date | Workspace | Handoff | Summary |\n|---|---|---|---|\n"
+        f"| 2026-09-24 | ws | [x.md]({target.resolve().as_uri()}) also [y.md]({other.resolve().as_uri()}) | s |\n",
+        encoding="utf-8")
+    rows = FileHandoffs(d, idx).rows()
+    assert rows[0].path == str(target.resolve())
+
+
+def test_uri_to_path_file_localhost():
+    if os.name == "nt":
+        assert uri_to_path("file://localhost/C:/Work/x.md") == "C:\\Work\\x.md"
+    else:
+        assert uri_to_path("file://localhost/work/x.md") == "/work/x.md"
 
 
 def test_reads_ps_link_with_hash_directory(tmp_path):
