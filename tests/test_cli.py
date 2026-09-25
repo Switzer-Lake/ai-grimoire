@@ -129,3 +129,44 @@ def test_config_show_never_prints_dsn(home, tmp_path, capsys, monkeypatch):
     monkeypatch.setenv("AI_GRIMOIRE_DSN", "postgresql://u:hunter2@h/db")
     code, out, _ = run(capsys, "config", "show")
     assert "hunter2" not in out
+
+
+def test_unexpected_store_error_is_one_line(home, tmp_path, capsys, monkeypatch):
+    db = tmp_path / "not-a-db.sqlite"
+    db.write_text("this is not a sqlite database", encoding="utf-8")
+    path = tmp_path / "config.toml"
+    path.write_text(f'[storage]\nbackend = "sqlite"\n[storage.sqlite]\npath = {json.dumps(str(db))}\n',
+                    encoding="utf-8")
+    monkeypatch.setenv("AI_GRIMOIRE_CONFIG", str(path))
+    code, out, err = run(capsys, "config", "check")
+    assert code == 1
+    assert out == ""
+    lines = err.strip("\n").splitlines()
+    assert len(lines) == 1
+    assert lines[0].startswith("grimoire: ")
+
+
+def test_unexpected_files_error_is_one_line(cfg, capsys, tmp_path, monkeypatch):
+    blocker = tmp_path / "blocker-dir"
+    blocker.write_text("i am a file, not a directory", encoding="utf-8")
+    cfg.write_text(f'[storage]\nbackend = "files"\n[storage.files]\ndir = {json.dumps(str(blocker / "data"))}\n',
+                    encoding="utf-8")
+    code, out, err = run(capsys, "remind", "add", "--text", "x", "--due", "2026-09-25")
+    assert code == 1
+    assert out == ""
+    lines = err.strip("\n").splitlines()
+    assert len(lines) == 1
+    assert lines[0].startswith("grimoire: ")
+
+
+def test_sqlite_store_is_closed_after_command(home, tmp_path, capsys, monkeypatch):
+    db = tmp_path / "g.db"
+    path = tmp_path / "config.toml"
+    path.write_text(f'[storage]\nbackend = "sqlite"\n[storage.sqlite]\npath = {json.dumps(str(db))}\n',
+                    encoding="utf-8")
+    monkeypatch.setenv("AI_GRIMOIRE_CONFIG", str(path))
+    code, out, err = run(capsys, "remind", "list")
+    assert code == 0, err
+    assert db.exists()
+    # On Windows, an unclosed sqlite handle blocks rename/delete of the file.
+    db.rename(tmp_path / "moved.db")

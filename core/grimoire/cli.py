@@ -28,7 +28,14 @@ def today(args) -> date:
 
 def _stores(args):
     cfg = load(args.config)
-    return cfg, *open_stores(cfg)
+    hs, rs = open_stores(cfg)
+    opened = getattr(args, "_opened_stores", None)
+    if opened is None:
+        opened = args._opened_stores = []
+    for s in (hs, rs):
+        if s not in opened:
+            opened.append(s)
+    return cfg, hs, rs
 
 
 # -- handoff -------------------------------------------------------------------
@@ -237,3 +244,14 @@ def main(argv: list[str] | None = None) -> int:
     except GrimoireError as e:
         print(f"grimoire: {e}", file=sys.stderr)
         return 1
+    except Exception as e:
+        print(f"grimoire: {type(e).__name__}: {e}", file=sys.stderr)
+        return 1
+    finally:
+        for s in getattr(args, "_opened_stores", None) or ():
+            close = getattr(s, "close", None)
+            if close:
+                try:
+                    close()
+                except Exception:
+                    pass
