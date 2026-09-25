@@ -1,0 +1,14 @@
+[project]
+name = "ai-grimoire"
+version = "0.1.0"
+description = "Shared core for the shift and remind Claude Code plugins"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+sql = ["psycopg[binary]>=3.1", "PyMySQL>=1.1"]
+
+[tool.pytest.ini_options]
+pythonpath = ["core"]
+testpaths = ["tests"]

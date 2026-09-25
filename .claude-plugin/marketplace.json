@@ -1,0 +1,19 @@
+{
+  "name": "ai-grimoire",
+  "owner": { "name": "Switzer Lake" },
+  "description": "Claude Code plugins for carrying work across sessions: shift (handoffs) and remind (dated reminders).",
+  "plugins": [
+    {
+      "name": "shift",
+      "source": "./plugins/shift",
+      "description": "End-of-session handoffs filed under the workspace's name, picked up and verified next session.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "remind",
+      "source": "./plugins/remind",
+      "description": "Dated reminders that the agent raises on the day they come due.",
+      "version": "0.1.0"
+    }
+  ]
+}

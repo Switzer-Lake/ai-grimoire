@@ -1,0 +1,9 @@
+{
+  "name": "remind",
+  "version": "0.1.0",
+  "description": "Dated reminders raised by a SessionStart hook on the day they come due. Shares storage with the shift plugin.",
+  "license": "MIT",
+  "author": { "name": "Switzer Lake" },
+  "repository": "https://github.com/Switzer-Lake/ai-grimoire",
+  "keywords": ["reminders", "tickler", "session-start"]
+}
